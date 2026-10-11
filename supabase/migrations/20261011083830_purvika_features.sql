@@ -1,0 +1,190 @@
+-- HydroVision: Purvika feature tables
+-- Aligned with the HydroVision schema contract.
+-- Review locally before applying to Supabase.
+
+-- 1. Replay scenario definitions
+CREATE TABLE public.replay_scenarios (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    slug text NOT NULL UNIQUE,
+    title text NOT NULL,
+    scenario_type text NOT NULL,
+    source_reference text,
+    parameters jsonb NOT NULL DEFAULT '{}'::jsonb,
+    is_enabled boolean NOT NULL DEFAULT true,
+    created_at timestamptz NOT NULL DEFAULT now()
+);
+
+-- 2. Replay execution records
+CREATE TABLE public.replay_runs (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    scenario_id uuid
+        REFERENCES public.replay_scenarios(id) ON DELETE SET NULL,
+    state text NOT NULL DEFAULT 'idle'
+        CHECK (state IN ('idle', 'running', 'paused', 'completed', 'failed')),
+    simulated_time timestamptz,
+    progress_pct numeric NOT NULL DEFAULT 0
+        CHECK (progress_pct >= 0 AND progress_pct <= 100),
+    started_at timestamptz,
+    ended_at timestamptz,
+    is_simulated boolean NOT NULL DEFAULT true,
+    error jsonb,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    CHECK (
+        started_at IS NULL
+        OR ended_at IS NULL
+        OR ended_at >= started_at
+    )
+);
+
+-- Link replay runs to simulated readings and risk snapshots
+ALTER TABLE public.gauge_readings
+    ADD CONSTRAINT fk_gauge_readings_replay_run
+    FOREIGN KEY (replay_run_id)
+    REFERENCES public.replay_runs(id) ON DELETE SET NULL;
+
+ALTER TABLE public.rain_readings
+    ADD CONSTRAINT fk_rain_readings_replay_run
+    FOREIGN KEY (replay_run_id)
+    REFERENCES public.replay_runs(id) ON DELETE SET NULL;
+
+ALTER TABLE public.risk_snapshots
+    ADD CONSTRAINT fk_risk_snapshots_replay_run
+    FOREIGN KEY (replay_run_id)
+    REFERENCES public.replay_runs(id) ON DELETE SET NULL;
+
+    
+-- Link operational simulation records to replay runs
+ALTER TABLE public.reports
+    ADD CONSTRAINT fk_reports_replay_run
+    FOREIGN KEY (replay_run_id)
+    REFERENCES public.replay_runs(id) ON DELETE SET NULL;
+
+ALTER TABLE public.alerts
+    ADD CONSTRAINT fk_alerts_replay_run
+    FOREIGN KEY (replay_run_id)
+    REFERENCES public.replay_runs(id) ON DELETE SET NULL;
+
+ALTER TABLE public.alert_deliveries
+    ADD CONSTRAINT fk_alert_deliveries_replay_run
+    FOREIGN KEY (replay_run_id)
+    REFERENCES public.replay_runs(id) ON DELETE SET NULL;
+
+ALTER TABLE public.sos_events
+    ADD CONSTRAINT fk_sos_events_replay_run
+    FOREIGN KEY (replay_run_id)
+    REFERENCES public.replay_runs(id) ON DELETE SET NULL;
+
+ALTER TABLE public.resource_suggestions
+    ADD CONSTRAINT fk_resource_suggestions_replay_run
+    FOREIGN KEY (replay_run_id)
+    REFERENCES public.replay_runs(id) ON DELETE SET NULL;
+
+ALTER TABLE public.tasks
+    ADD CONSTRAINT fk_tasks_replay_run
+    FOREIGN KEY (replay_run_id)
+    REFERENCES public.replay_runs(id) ON DELETE SET NULL;
+
+ALTER TABLE public.after_action
+    ADD CONSTRAINT fk_after_action_replay_run
+    FOREIGN KEY (replay_run_id)
+    REFERENCES public.replay_runs(id) ON DELETE SET NULL;
+
+ALTER TABLE public.sitreps
+    ADD CONSTRAINT fk_sitreps_replay_run
+    FOREIGN KEY (replay_run_id)
+    REFERENCES public.replay_runs(id) ON DELETE SET NULL;
+
+-- 3. Knowledge-base documents
+CREATE TABLE public.kb_documents (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    title text NOT NULL,
+    type text NOT NULL,
+    language text NOT NULL,
+    district text,
+    storage_path text NOT NULL,
+    status text NOT NULL DEFAULT 'pending',
+    chunk_count integer NOT NULL DEFAULT 0
+        CHECK (chunk_count >= 0),
+    source_url text,
+    uploaded_by uuid REFERENCES public.profiles(id) ON DELETE SET NULL,
+    created_at timestamptz NOT NULL DEFAULT now()
+);
+
+-- 4. Document knowledge chunks
+-- The 384-dimensional embedding column is added by migration 4.
+CREATE TABLE public.knowledge_chunks (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    document_id uuid NOT NULL
+        REFERENCES public.kb_documents(id) ON DELETE CASCADE,
+    chunk_index integer NOT NULL CHECK (chunk_index >= 0),
+    content text NOT NULL,
+    metadata jsonb NOT NULL DEFAULT '{}'::jsonb,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    UNIQUE (document_id, chunk_index)
+);
+
+-- 5. Historical event memory
+-- The 384-dimensional embedding column is added by migration 4.
+CREATE TABLE public.event_memory (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    event_id text NOT NULL,
+    village_id uuid
+        REFERENCES public.villages(id) ON DELETE SET NULL,
+    event_time timestamptz NOT NULL,
+    feature_summary jsonb NOT NULL DEFAULT '{}'::jsonb,
+    source_reference text,
+    label_confidence numeric,
+    created_at timestamptz NOT NULL DEFAULT now()
+);
+
+-- 6. Rumor and claim verification records
+CREATE TABLE public.rumor_checks (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    village_id uuid
+        REFERENCES public.villages(id) ON DELETE SET NULL,
+    claim text NOT NULL,
+    verdict text NOT NULL,
+    confidence numeric,
+    evidence jsonb NOT NULL DEFAULT '[]'::jsonb,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    is_simulated boolean NOT NULL DEFAULT false
+);
+
+-- 7. Audit trail
+CREATE TABLE public.audit_log (
+    id bigserial PRIMARY KEY,
+    actor_id uuid REFERENCES public.profiles(id) ON DELETE SET NULL,
+    action text NOT NULL,
+    entity_type text NOT NULL,
+    entity_id text,
+    details jsonb NOT NULL DEFAULT '{}'::jsonb,
+    created_at timestamptz NOT NULL DEFAULT now()
+);
+
+-- Indexes
+CREATE INDEX idx_replay_runs_scenario_created
+    ON public.replay_runs (scenario_id, created_at DESC);
+
+CREATE INDEX idx_knowledge_chunks_document
+    ON public.knowledge_chunks (document_id, chunk_index);
+
+CREATE INDEX idx_event_memory_village_time
+    ON public.event_memory (village_id, event_time DESC);
+
+CREATE INDEX idx_event_memory_event_id
+    ON public.event_memory (event_id);
+
+CREATE INDEX idx_rumor_checks_village_created
+    ON public.rumor_checks (village_id, created_at DESC);
+
+CREATE INDEX idx_audit_log_created
+    ON public.audit_log (created_at DESC);
+
+-- Enable RLS. Access policies will be added after review.
+ALTER TABLE public.replay_scenarios ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.replay_runs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.kb_documents ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.knowledge_chunks ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.event_memory ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.rumor_checks ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.audit_log ENABLE ROW LEVEL SECURITY;

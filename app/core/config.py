@@ -31,6 +31,10 @@ class Settings(BaseSettings):
 
     # Simulation & safety guardrails
     ALLOW_SIM_DELIVERY: bool = False
+    INGESTION_WORKER_TOKEN: str = ""
+
+    # WF-03 n8n failure callback webhook URL
+    WF03_CALLBACK_URL: str = ""
 
     model_config = SettingsConfigDict(
         env_file=".env",

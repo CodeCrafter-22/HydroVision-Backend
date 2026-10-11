@@ -36,3 +36,8 @@ scratch/
 # Operating System files
 .DS_Store
 Thumbs.db
+
+# Executables
+cloudflared.exe
+*.exe
+

@@ -1,13 +1,11 @@
-"""Central API Router for HydroVision Backend.
 
-Aggregates all API v1 endpoints under a unified router.
-Teammates (such as Purvika for AI/Replay routes) can register their feature routers here.
-"""
+"""Central API Router for HydroVision Backend."""
 
 from fastapi import APIRouter
-from app.api.v1 import health
+from app.api.v1 import health, ingestion
 
 api_router = APIRouter()
 
-# Register core v1 routers
+# Core API v1 routes
 api_router.include_router(health.router, tags=["Health"])
+api_router.include_router(ingestion.router)
