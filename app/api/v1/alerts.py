@@ -62,14 +62,34 @@ def require_approver(authorization: str | None) -> str:
 
     client = get_supabase_client()
 
+    
     try:
-        user_response = client.auth.get_user(token)
-        user = user_response.user
+        role_result = (
+            client.table("user_roles")
+            .select("role")
+            .eq("user_id", str(user.id))
+            .execute()
+        )
     except Exception:
         raise HTTPException(
-            status_code=401,
-            detail="The access token is invalid or expired.",
+            status_code=500,
+            detail="Unable to verify the user's role.",
         )
+
+    user_roles = {
+        row.get("role")
+        for row in (role_result.data or [])
+        if row.get("role")
+    }
+
+    if not user_roles.intersection(APPROVER_ROLES):
+        raise HTTPException(
+            status_code=403,
+            detail="Only authorized officers or admins can approve or reject alerts.",
+        )
+
+    return str(user.id)
+
 
     if not user:
         raise HTTPException(
@@ -142,7 +162,11 @@ def list_alerts(
 ):
     client = get_supabase_client()
 
-    query = client.table("alerts").select("*")
+    query = (
+    client.table("alerts")
+    .select("*")
+    .eq("status", "approved")
+)
 
     if village_code:
         village_result = (
@@ -191,7 +215,9 @@ def list_alerts(
 def create_alert_draft(
     payload: AlertDraft,
     request: Request,
+    authorization: str | None = Header(default=None),
 ):
+    
     if payload.tier not in ALLOWED_TIERS:
         raise HTTPException(
             status_code=422,
@@ -200,6 +226,7 @@ def create_alert_draft(
                 "Danger, or Evacuate."
             ),
         )
+    require_approver(authorization)
 
     client = get_supabase_client()
 
