@@ -43,6 +43,7 @@ def get_response_meta(request: Request) -> dict:
     }
 
 
+
 def require_approver(authorization: str | None) -> str:
     """Authenticate a Supabase user and require officer/admin role."""
 
@@ -62,7 +63,23 @@ def require_approver(authorization: str | None) -> str:
 
     client = get_supabase_client()
 
-    
+    # Verify the access token and retrieve the authenticated user.
+    try:
+        auth_result = client.auth.get_user(token)
+        user = auth_result.user
+    except Exception:
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid or expired Supabase access token.",
+        )
+
+    if not user:
+        raise HTTPException(
+            status_code=401,
+            detail="Unauthenticated user.",
+        )
+
+    # Check the user's assigned application roles.
     try:
         role_result = (
             client.table("user_roles")
@@ -90,42 +107,6 @@ def require_approver(authorization: str | None) -> str:
 
     return str(user.id)
 
-
-    if not user:
-        raise HTTPException(
-            status_code=401,
-            detail="Unauthenticated user.",
-        )
-
-    try:
-        profile_result = (
-            client.table("profiles")
-            .select("id, role")
-            .eq("id", str(user.id))
-            .limit(1)
-            .execute()
-        )
-    except Exception:
-        raise HTTPException(
-            status_code=500,
-            detail="Unable to verify the user's role.",
-        )
-
-    if not profile_result.data:
-        raise HTTPException(
-            status_code=403,
-            detail="No user profile was found.",
-        )
-
-    profile = profile_result.data[0]
-
-    if profile.get("role") not in APPROVER_ROLES:
-        raise HTTPException(
-            status_code=403,
-            detail="Only authorized officers or admins can approve or reject alerts.",
-        )
-
-    return str(user.id)
 
 
 def get_alert_by_id(client, alert_id: UUID) -> dict:
