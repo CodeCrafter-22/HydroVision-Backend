@@ -58,12 +58,14 @@ async def fetch_open_meteo_flood(
                 continue
         except (ValueError, TypeError):
             continue
-
-        # Parse date and normalize to UTC timestamp
+        
+        # Parse the provider's date. Never invent an observation timestamp.
         try:
-            obs_dt = datetime.fromisoformat(f"{time_str}T00:00:00+00:00")
-        except ValueError:
-            obs_dt = datetime.now(timezone.utc)
+            obs_dt = datetime.fromisoformat(
+                f"{time_str}T00:00:00+00:00"
+            )
+        except (ValueError, TypeError):
+            continue
 
         readings.append(
             {

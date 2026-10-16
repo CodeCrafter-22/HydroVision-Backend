@@ -1,4 +1,3 @@
-
 """Preliminary rule-based flood risk assessment for HydroVision."""
 
 from datetime import datetime, timezone
@@ -9,14 +8,14 @@ from app.core.supabase_client import get_supabase_client
 
 router = APIRouter(prefix="/villages", tags=["Flood Risk"])
 
-# DEMO thresholds only. Replace with locally validated thresholds
-# before using this API for real flood-warning decisions.
+# DEMO thresholds only. Not validated for real flood-warning decisions.
 HIGH_DISCHARGE_M3S = 10.0
 MODERATE_DISCHARGE_M3S = 5.0
 HIGH_RAINFALL_MM = 50.0
 MODERATE_RAINFALL_MM = 25.0
 
 STALE_AFTER_HOURS = 6
+MODELLED_DISCHARGE_SOURCES = {"open_meteo"}
 
 
 def parse_timestamp(value):
@@ -45,13 +44,13 @@ def reading_is_stale(observation, now):
 
     age_hours = (now - observed_at).total_seconds() / 3600
 
-    # Future-dated observations should not be trusted either.
+    # Reject future-dated readings and readings older than the freshness limit.
     return age_hours < 0 or age_hours > STALE_AFTER_HOURS
 
 
 @router.get("/{village_code}/risk")
 def assess_village_risk(village_code: str, request: Request):
-    """Return a preliminary risk category from the latest available readings."""
+    """Return a preliminary risk category from available readings."""
 
     client = get_supabase_client()
 
@@ -74,7 +73,10 @@ def assess_village_risk(village_code: str, request: Request):
 
     gauge_result = (
         client.table("gauge_readings")
-        .select("source, observed_at, level_m, discharge_m3s, quality, is_simulated")
+        .select(
+            "source, observed_at, level_m, discharge_m3s, "
+            "quality, is_simulated, raw_payload"
+        )
         .eq("village_id", village_id)
         .order("observed_at", desc=True)
         .limit(1)
@@ -96,22 +98,81 @@ def assess_village_risk(village_code: str, request: Request):
 
     warnings = []
 
+    gauge_stale = reading_is_stale(gauge, now)
+    rain_stale = reading_is_stale(rain, now)
+
     if gauge is None:
         warnings.append("No river-discharge reading is available.")
-    elif reading_is_stale(gauge, now):
-        warnings.append("The latest river-discharge reading is missing a valid timestamp or is stale.")
+    elif gauge_stale:
+        warnings.append(
+            "The latest river-discharge reading is missing a valid "
+            "timestamp, is future-dated, or is stale."
+        )
 
     if rain is None:
         warnings.append("No rainfall reading is available for this village.")
-    elif reading_is_stale(rain, now):
-        warnings.append("The latest rainfall reading is missing a valid timestamp or is stale.")
+    elif rain_stale:
+        warnings.append(
+            "The latest rainfall reading is missing a valid "
+            "timestamp, is future-dated, or is stale."
+        )
 
-    # Calculate a preliminary category from available readings.
-    # These are demonstration thresholds, not validated warning levels.
+    gauge_is_simulated = bool(
+        gauge and gauge.get("is_simulated", False)
+    )
+
+    gauge_source = gauge.get("source") if gauge else None
+    raw_payload = (
+        gauge.get("raw_payload") or {}
+        if gauge
+        else {}
+    )
+
+    gauge_is_modelled = (
+        gauge_source in MODELLED_DISCHARGE_SOURCES
+        or raw_payload.get("data_type")
+        == "modelled_daily_river_discharge"
+    )
+
+    gauge_is_usable = (
+        gauge is not None
+        and not gauge_stale
+        and not gauge_is_simulated
+        and not gauge_is_modelled
+    )
+
+    if gauge_is_simulated:
+        warnings.append(
+            "The latest river-discharge reading is simulated "
+            "and was excluded from the risk assessment."
+        )
+
+    if gauge_is_modelled:
+        warnings.append(
+            "The latest river-discharge reading is modelled provider "
+            "data, not a physical gauge measurement, and was excluded "
+            "from this assessment."
+        )
+
+    rain_is_usable = rain is not None and not rain_stale
+
+    discharge = (
+        gauge.get("discharge_m3s")
+        if gauge_is_usable
+        else None
+    )
+    river_level = (
+        gauge.get("level_m")
+        if gauge_is_usable
+        else None
+    )
+    rainfall = (
+        rain.get("rain_mm")
+        if rain_is_usable
+        else None
+    )
+
     signals = []
-
-    discharge = gauge.get("discharge_m3s") if gauge else None
-    rainfall = rain.get("rain_mm") if rain else None
 
     if discharge is not None:
         if float(discharge) >= HIGH_DISCHARGE_M3S:
@@ -142,7 +203,6 @@ def assess_village_risk(village_code: str, request: Request):
         risk_level = "low"
         assessment_status = "preliminary"
 
-    # Missing or stale observations mean the category needs extra caution.
     if warnings and assessment_status == "preliminary":
         assessment_status = "limited_data"
 
@@ -153,13 +213,24 @@ def assess_village_risk(village_code: str, request: Request):
             "assessment_status": assessment_status,
             "observations": {
                 "river_discharge_m3s": discharge,
-                "river_level_m": gauge.get("level_m") if gauge else None,
+                "river_level_m": river_level,
                 "rainfall_mm": rainfall,
-                "gauge_observed_at": gauge.get("observed_at") if gauge else None,
-                "rain_observed_at": rain.get("observed_at") if rain else None,
-                "gauge_source": gauge.get("source") if gauge else None,
-                "gauge_quality": gauge.get("quality") if gauge else None,
-                "gauge_is_simulated": gauge.get("is_simulated") if gauge else None,
+                "gauge_observed_at": (
+                    gauge.get("observed_at") if gauge else None
+                ),
+                "rain_observed_at": (
+                    rain.get("observed_at") if rain else None
+                ),
+                "gauge_source": gauge_source,
+                "gauge_quality": (
+                    gauge.get("quality") if gauge else None
+                ),
+                "gauge_is_simulated": (
+                    gauge.get("is_simulated") if gauge else None
+                ),
+                "gauge_is_modelled": (
+                    gauge_is_modelled if gauge else None
+                ),
             },
             "warnings": warnings,
             "thresholds_used": {
@@ -171,8 +242,9 @@ def assess_village_risk(village_code: str, request: Request):
             },
             "method": "rule_based_demo",
             "safety_note": (
-                "This preliminary result is for development and demonstration "
-                "only. It is not an official flood warning or a validated prediction."
+                "This preliminary result is for development and "
+                "demonstration only. It is not an official flood warning "
+                "or a validated prediction."
             ),
         },
         "meta": {
