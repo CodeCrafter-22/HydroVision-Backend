@@ -7,13 +7,12 @@ from datetime import datetime
 from typing import Any, Literal
 from uuid import UUID
 
-from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException, status
+from fastapi import APIRouter, Depends, Header, HTTPException, status
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.core.config import settings
 from app.core.supabase_client import get_supabase_client
 from app.schemas.ingestion_trigger import IngestionTriggerRequest, TriggerResponse
-from app.workers.ingestion_worker import run_ingestion_job
 
 router = APIRouter(prefix="/ingestion", tags=["Data Ingestion"])
 
@@ -105,7 +104,6 @@ def save_record(table: str, record: dict[str, Any]) -> dict[str, Any]:
     except HTTPException:
         raise
     except Exception:
-        # Keep database credentials and internal errors out of API responses.
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail=f"Could not save data to {table}. Check server logs.",
@@ -142,8 +140,7 @@ async def ingest_rain_reading(payload: RainReading) -> dict[str, Any]:
 async def ingest_source_health(
     payload: SourceHealthReading,
 ) -> dict[str, Any]:
-    record = payload.model_dump(mode="json")
-    return save_record("source_health", record)
+    return save_record("source_health", payload.model_dump(mode="json"))
 
 
 @router.post(
@@ -152,21 +149,50 @@ async def ingest_source_health(
     status_code=status.HTTP_202_ACCEPTED,
     response_model=TriggerResponse,
     summary="Trigger Ingestion Workflow",
-    description="Asynchronously queues an ingestion run for the specified source.",
+    description=(
+        "Persists an ingestion job and returns HTTP 202. "
+        "The queue worker processes it asynchronously."
+    ),
 )
 async def trigger_ingestion(
     payload: IngestionTriggerRequest,
-    background_tasks: BackgroundTasks,
 ) -> TriggerResponse:
-    """Acknowledge ingestion job and queue background worker task."""
+    """Persist the job before acknowledging it to n8n."""
     execution_id = f"job_{uuid.uuid4().hex}"
-    background_tasks.add_task(
-        run_ingestion_job,
-        execution_id=execution_id,
-        request=payload,
-    )
+
+    job_record = {
+        "execution_id": execution_id,
+        "active_source": payload.active_source,
+        "is_fallback": payload.is_fallback,
+        "triggered_at": payload.triggered_at.isoformat(),
+        "status": "pending",
+        "attempts": 0,
+        "max_attempts": 3,
+    }
+
+    try:
+        response = (
+            get_supabase_client()
+            .table("ingestion_jobs")
+            .insert(job_record)
+            .execute()
+        )
+
+        if not response.data:
+            raise RuntimeError("Database did not confirm job creation.")
+
+    except Exception:
+        # Never return an acknowledgement for a job that was not persisted.
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Could not queue ingestion job. Please retry later.",
+        )
+
     return TriggerResponse(
         status="accepted",
-        message=f"Ingestion job queued successfully for source: {payload.active_source}",
+        message=(
+            "Ingestion job queued successfully for source: "
+            f"{payload.active_source}"
+        ),
         execution_id=execution_id,
-    )
+    )

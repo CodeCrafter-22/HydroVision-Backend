@@ -1,8 +1,11 @@
+
 """Main entry point for the HydroVision Backend FastAPI application."""
 
+import asyncio
 import uuid
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator
+
 from fastapi import FastAPI, Request, Response
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
@@ -16,14 +19,22 @@ from app.core.errors import (
     generic_exception_handler,
     validation_exception_handler,
 )
+from app.workers.ingestion_queue import ingestion_queue_loop
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
-    """Application lifespan manager for startup and shutdown events."""
-    # Startup logic: Database pools or background tasks will be initialized here in Phase 2
-    yield
-    # Shutdown logic: Close database pools cleanly
+    """Start the persistent ingestion queue runner."""
+    queue_task = asyncio.create_task(ingestion_queue_loop())
+
+    try:
+        yield
+    finally:
+        queue_task.cancel()
+        try:
+            await queue_task
+        except asyncio.CancelledError:
+            pass
 
 
 app = FastAPI(
@@ -39,22 +50,19 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# ------------------------------------------------------------------------------
-# Middlewares
-# ------------------------------------------------------------------------------
 
-# 1. Request ID tracing middleware
 @app.middleware("http")
 async def request_id_middleware(request: Request, call_next) -> Response:
     """Ensure every HTTP request has a unique request_id for tracing."""
-    request_id = request.headers.get("X-Request-ID", f"req_{uuid.uuid4().hex[:12]}")
+    request_id = request.headers.get(
+        "X-Request-ID", f"req_{uuid.uuid4().hex[:12]}"
+    )
     request.state.request_id = request_id
     response = await call_next(request)
     response.headers["X-Request-ID"] = request_id
     return response
 
 
-# 2. Cross-Origin Resource Sharing (CORS) middleware
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.CORS_ORIGINS,
@@ -63,18 +71,12 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# ------------------------------------------------------------------------------
-# Exception Handlers (Standard Error Envelopes)
-# ------------------------------------------------------------------------------
+
 app.add_exception_handler(AppException, app_exception_handler)
-app.add_exception_handler(RequestValidationError, validation_exception_handler)
+app.add_exception_handler(
+    RequestValidationError, validation_exception_handler
+)
 app.add_exception_handler(Exception, generic_exception_handler)
 
-# ------------------------------------------------------------------------------
-# Router Registration
-# ------------------------------------------------------------------------------
-# Mount top-level /health check for container health checks
 app.include_router(health_router, tags=["Health"])
-
-# Mount versioned API routes under /api/v1
 app.include_router(api_router, prefix=settings.API_V1_PREFIX)
