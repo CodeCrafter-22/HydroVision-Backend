@@ -1,0 +1,67 @@
+{
+  "name": "WF-00_error-handler",
+  "nodes": [
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ],
+      "id": "e7cccf57-1ae5-4db0-ae5d-478dfa1f930c",
+      "name": "Error Trigger"
+    },
+    {
+      "parameters": {
+        "sendTo": "mansirathod671@gmail.com",
+        "subject": "[CRITICAL PIPELINE ERROR] Workflow Execution Failed!",
+        "emailType": "text",
+        "message": "=Execution Failure Details:\n--------------------------\n- Workflow Name: {{ $json.workflow.name }}\n- Workflow ID: {{ $json.workflow.id }}\n- Execution ID: {{ $json.execution.id }}\n- Error Message: {{ $json.execution.error.message }}\n- Timestamp: {{ $json.execution.lastNodeExecuted }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        224,
+        0
+      ],
+      "id": "17a14c20-48ff-4b1d-9ae2-f465d0bc69e1",
+      "name": "Send a message",
+      "webhookId": "f90a9b5c-2c2c-46af-aeea-a983245c8780",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "g8nl6jPOHQQdd6lR",
+          "name": "Gmail account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Error Trigger": {
+      "main": [
+        [
+          {
+            "node": "Send a message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "6cf17d8f-4267-48d5-bdc5-09172e1bac4f",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "687815a9cbd88b02933c79cc904a49207e2dd586f7be01aa93a8b5d803291150"
+  },
+  "nodeGroups": [],
+  "id": "dzr3aUM5aPgacRzy",
+  "tags": []
+}

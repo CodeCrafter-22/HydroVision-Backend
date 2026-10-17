@@ -1,0 +1,80 @@
+{
+  "name": "WF-04_daily-summary-report",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours",
+              "hoursInterval": 8
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.4,
+      "position": [
+        0,
+        0
+      ],
+      "id": "cc327ee8-b343-4e5a-8649-7ede5fb385c1",
+      "name": "Schedule Trigger"
+    },
+    {
+      "parameters": {
+        "sendTo": "2024ca@sigce.edu.in",
+        "subject": "[DAILY REPORT] Water Gauge System Health & Ingestion Summary",
+        "emailType": "text",
+        "message": "=Daily System Summary (Past 24 Hours):\n------------------------------------\n- Total Readings Ingested: {{ $json.total_readings }}\n- Currently Failed Sources: {{ $json.active_failures }}\n- Worker Endpoint Status: Healthy (202 Accepted)",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        224,
+        0
+      ],
+      "id": "26b4b53b-1d0a-4aa7-a5f1-4f7dbb520530",
+      "name": "Send a message",
+      "webhookId": "d61787bd-55b9-4376-9e6c-432deaff4461",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "g8nl6jPOHQQdd6lR",
+          "name": "Gmail account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Send a message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "timeSavedMode": "fixed",
+    "errorWorkflow": "dzr3aUM5aPgacRzy",
+    "callerPolicy": "workflowsFromSameOwner",
+    "availableInMCP": false
+  },
+  "versionId": "dd8b3d29-c179-40dd-ba1d-4761e3228da3",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "687815a9cbd88b02933c79cc904a49207e2dd586f7be01aa93a8b5d803291150"
+  },
+  "nodeGroups": [],
+  "id": "yuApkOlej3KhopSt",
+  "tags": []
+}
