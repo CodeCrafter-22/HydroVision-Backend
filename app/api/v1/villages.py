@@ -10,6 +10,34 @@ from app.core.supabase_client import get_supabase_client
 router = APIRouter(prefix="/villages", tags=["Villages"])
 
 
+@router.get("")
+def list_villages(request: Request):
+    """Return village records stored in Supabase."""
+
+    client = get_supabase_client()
+
+    result = (
+        client.table("villages")
+        .select("*")
+        .order("name")
+        .limit(500)
+        .execute()
+    )
+
+    villages = result.data or []
+
+    return {
+        "data": {
+            "villages": villages,
+            "total": len(villages),
+        },
+        "meta": {
+            "request_id": getattr(request.state, "request_id", None),
+            "generated_at": datetime.now(timezone.utc).isoformat(),
+        },
+    }
+
+
 @router.get("/{village_code}/status")
 def get_village_status(village_code: str, request: Request):
     """Return a village's latest readings and ingestion-source health."""
