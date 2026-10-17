@@ -141,13 +141,20 @@ def list_alerts(
     alert_status: str | None = Query(default=None, alias="status"),
     limit: int = Query(default=50, ge=1, le=100),
 ):
+    # Public listing must never expose drafts or other unapproved alerts.
+    if alert_status and alert_status != "approved":
+        raise HTTPException(
+            status_code=403,
+            detail="Only approved alerts are available on this endpoint.",
+        )
+
     client = get_supabase_client()
 
     query = (
-    client.table("alerts")
-    .select("*")
-    .eq("status", "approved")
-)
+        client.table("alerts")
+        .select("*")
+        .eq("status", "approved")
+    )
 
     if village_code:
         village_result = (
@@ -166,9 +173,6 @@ def list_alerts(
 
         query = query.eq("village_id", village_result.data[0]["id"])
 
-    if alert_status:
-        query = query.eq("status", alert_status)
-
     result = (
         query
         .order("created_at", desc=True)
@@ -185,13 +189,6 @@ def list_alerts(
             "count": len(alerts),
         },
     }
-
-
-# -------------------------------------------------------------------
-# POST /api/v1/alerts
-# Create a new alert draft.
-# -------------------------------------------------------------------
-
 @router.post("", status_code=201)
 def create_alert_draft(
     payload: AlertDraft,

@@ -44,8 +44,9 @@ async def send_wf03_failure_callback(
             return True
 
         logger.warning(
-            "WF-03 callback returned non-2xx status: %s",
+            "WF-03 callback returned non-2xx status: %s; response: %s",
             response.status_code,
+            response.text[:300],
         )
     except Exception:
         logger.exception("Failed to deliver WF-03 failure callback.")

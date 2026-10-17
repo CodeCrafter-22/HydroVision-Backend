@@ -65,3 +65,15 @@ def test_alert_creation_rejects_invalid_tier():
     )
 
     assert response.status_code == 422
+
+
+def test_alert_listing_rejects_non_approved_status():
+    response = client.get(
+        "/api/v1/alerts",
+        params={"status": "draft"},
+    )
+
+    assert response.status_code == 403
+    assert response.json()["detail"] == (
+        "Only approved alerts are available on this endpoint."
+    )
