@@ -248,7 +248,7 @@ def test_worker_open_meteo_success_and_deduplication():
         )
 
         select_query = mock_supabase.table.return_value.select.return_value
-        select_query.eq.return_value.eq.return_value.eq.return_value.execute.return_value = MagicMock(
+        select_query.eq.return_value.eq.return_value.eq.return_value.limit.return_value.execute.return_value = MagicMock(
             data=[]
         )
 
@@ -279,7 +279,7 @@ def test_worker_open_meteo_success_and_deduplication():
             assert result["records_deduplicated"] == 0
 
             # Test deduplication on subsequent run: mock existing reading found
-            select_query.eq.return_value.eq.return_value.eq.return_value.execute.return_value = MagicMock(
+            select_query.eq.return_value.eq.return_value.eq.return_value.limit.return_value.execute.return_value = MagicMock(
                 data=[{"id": 101}]
             )
             dedup_result = await run_ingestion_job(

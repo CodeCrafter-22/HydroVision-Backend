@@ -103,13 +103,12 @@ async def run_ingestion_job(
     try:
         if request.active_source == "cwc_gauge":
             raise RuntimeError(
-                "CWC ingestion is not operational: provider endpoints "
+                "CWC ingestion is explicitly non-operational: provider endpoints "
                 "and station mapping are not configured."
             )
-
         if request.active_source == "nasa_gpm":
             raise RuntimeError(
-                "NASA GPM ingestion is deferred; the operational pipeline "
+                "NASA GPM ingestion is explicitly deferred; the operational pipeline "
                 "has not been implemented."
             )
 
@@ -258,11 +257,23 @@ async def run_ingestion_job(
             if successful_records > 0:
                 status = "degraded"
             else:
-                status = "down"
-                original_error = RuntimeError(
-                    "Ingestion failed for all villages or no usable "
-                    "readings were processed."
-                )
+                # Invalid village coordinates are a data-quality problem,
+                # not necessarily a provider outage.
+                coordinate_only_errors = all(
+                    "Missing or unparseable village coordinates."
+                    in item.get("error", "")
+                    for item in village_errors
+                    if "error" in item
+                ) and any("error" in item for item in village_errors)
+
+                if coordinate_only_errors:
+                    status = "degraded"
+                else:
+                    status = "down"
+                    original_error = RuntimeError(
+                        "Ingestion failed for all villages or no usable "
+                        "readings were processed."
+                    )
 
         elif records_fetched == 0:
             status = "degraded"
@@ -271,8 +282,7 @@ async def run_ingestion_job(
             )
 
         else:
-            # This includes duplicate-only runs: existing valid readings
-            # are a successful no-op, not a failed ingestion.
+            # Existing valid readings count as a successful no-op.
             status = "healthy"
 
     except Exception as exc:

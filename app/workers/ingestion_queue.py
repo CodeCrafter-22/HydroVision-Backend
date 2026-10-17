@@ -1,4 +1,3 @@
-
 """Persistent Supabase queue runner for ingestion jobs."""
 
 import asyncio
@@ -30,7 +29,6 @@ def _claim_job() -> dict[str, Any] | None:
 def _update_job(execution_id: str, values: dict[str, Any]) -> None:
     """Persist a job state transition."""
     values["updated_at"] = datetime.now(timezone.utc).isoformat()
-
     (
         get_supabase_client()
         .table("ingestion_jobs")
@@ -41,7 +39,7 @@ def _update_job(execution_id: str, values: dict[str, Any]) -> None:
 
 
 def _retry_time(attempts: int) -> str:
-    """Apply a short exponential delay before retrying."""
+    """Apply exponential backoff before retrying."""
     delay_seconds = min(60, 2 ** attempts)
     return (
         datetime.now(timezone.utc) + timedelta(seconds=delay_seconds)
@@ -59,13 +57,10 @@ async def _execute_job(job: dict[str, Any]) -> None:
     )
 
     try:
-        # The existing worker uses a synchronous Supabase client.
-        # Run it in a separate thread with its own asyncio event loop
-        # so the queue poller remains responsive.
-        result = await asyncio.to_thread(
-            asyncio.run,
-            run_ingestion_job(execution_id, request),
-        )
+        def run_sync() -> dict[str, Any]:
+            return asyncio.run(run_ingestion_job(execution_id, request))
+
+        result = await asyncio.to_thread(run_sync)
 
         result_status = result.get("status", "down")
         error_message = (
@@ -77,8 +72,30 @@ async def _execute_job(job: dict[str, Any]) -> None:
             or "Ingestion did not complete successfully."
         )
 
+        now = datetime.now(timezone.utc).isoformat()
+
         if result_status == "down":
-            if attempts < MAX_ATTEMPTS:
+            unsupported_sources = {"cwc_gauge", "nasa_gpm"}
+
+            if job["active_source"] in unsupported_sources:
+                _update_job(
+                    execution_id,
+                    {
+                        "status": "failed",
+                        "result": result,
+                        "last_error": error_message[:2000],
+                        "locked_at": None,
+                        "finished_at": now,
+                    },
+                )
+                logger.warning(
+                    "Job %s failed because source %s is not operational. "
+                    "Automatic retries skipped.",
+                    execution_id,
+                    job["active_source"],
+                )
+
+            elif attempts < MAX_ATTEMPTS:
                 _update_job(
                     execution_id,
                     {
@@ -91,11 +108,12 @@ async def _execute_job(job: dict[str, Any]) -> None:
                     },
                 )
                 logger.warning(
-                    "Ingestion job %s failed on attempt %s/%s; retry queued.",
+                    "Job %s failed on attempt %s/%s; retry queued.",
                     execution_id,
                     attempts,
                     MAX_ATTEMPTS,
                 )
+
             else:
                 _update_job(
                     execution_id,
@@ -104,14 +122,13 @@ async def _execute_job(job: dict[str, Any]) -> None:
                         "result": result,
                         "last_error": error_message[:2000],
                         "locked_at": None,
-                        "finished_at": datetime.now(timezone.utc).isoformat(),
+                        "finished_at": now,
                     },
                 )
                 logger.error(
-                    "Ingestion job %s exhausted all %s attempts.",
-                    execution_id,
-                    MAX_ATTEMPTS,
+                    "Job %s exhausted all attempts.", execution_id
                 )
+
 
         elif result_status == "degraded":
             _update_job(
@@ -121,7 +138,7 @@ async def _execute_job(job: dict[str, Any]) -> None:
                     "result": result,
                     "last_error": error_message[:2000],
                     "locked_at": None,
-                    "finished_at": datetime.now(timezone.utc).isoformat(),
+                    "finished_at": now,
                 },
             )
 
@@ -133,13 +150,14 @@ async def _execute_job(job: dict[str, Any]) -> None:
                     "result": result,
                     "last_error": None,
                     "locked_at": None,
-                    "finished_at": datetime.now(timezone.utc).isoformat(),
+                    "finished_at": now,
                 },
             )
 
     except Exception as exc:
         logger.exception("Queue processing failed for job %s", execution_id)
 
+        now = datetime.now(timezone.utc).isoformat()
         if attempts < MAX_ATTEMPTS:
             _update_job(
                 execution_id,
@@ -158,18 +176,17 @@ async def _execute_job(job: dict[str, Any]) -> None:
                     "status": "failed",
                     "last_error": str(exc)[:2000],
                     "locked_at": None,
-                    "finished_at": datetime.now(timezone.utc).isoformat(),
+                    "finished_at": now,
                 },
             )
 
 
 async def ingestion_queue_loop() -> None:
-    """Continuously claim and process jobs until application shutdown."""
+    """Continuously claim and process queued ingestion jobs."""
     logger.info("Persistent ingestion queue runner started.")
 
     while True:
         try:
-            # Supabase's Python client is synchronous.
             job = await asyncio.to_thread(_claim_job)
 
             if job is None:
