@@ -1,5 +1,7 @@
 """HydroVision dashboard summary API."""
 
+import logging
+
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, HTTPException, Request
@@ -9,6 +11,7 @@ from app.core.supabase_client import get_supabase_client
 
 router = APIRouter(prefix="/dashboard", tags=["Dashboard"])
 
+logger = logging.getLogger(__name__)
 
 def response_meta(request: Request) -> dict:
     return {
@@ -203,6 +206,8 @@ def get_dashboard_summary(request: Request):
     except HTTPException:
         raise
     except Exception:
-        # Let the application's standard error handler return the
-        # established error envelope and request ID.
+        logger.exception(
+            "Dashboard summary failed; request_id=%s",
+            getattr(request.state, "request_id", None),
+        )
         raise
