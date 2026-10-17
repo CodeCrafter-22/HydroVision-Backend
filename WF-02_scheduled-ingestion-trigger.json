@@ -1,0 +1,148 @@
+{
+  "name": "WF-02_scheduled-ingestion-trigger",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 15
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.4,
+      "position": [
+        0,
+        0
+      ],
+      "id": "7b63e8c3-fc65-4ca1-8b71-571580d5d92d",
+      "name": "Schedule_Ingestion"
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "tableId": "source_health"
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        224,
+        0
+      ],
+      "id": "21b7596d-c789-4a5b-bc42-3e6ea4142960",
+      "name": "Get_Source_Health",
+      "credentials": {
+        "supabaseApi": {
+          "id": "Qcjg53UWJedO8OUX",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\n\n// Find CWC health status\nconst cwcRecord = items.find(item => item.json.source_name === 'cwc_gauge');\nconst openMeteoRecord = items.find(item => item.json.source_name === 'open_meteo');\n\nlet selectedSource = 'cwc_gauge';\nlet isFallback = false;\n\n// If CWC is not healthy, route to Open-Meteo fallback\nif (!cwcRecord || cwcRecord.json.status !== 'healthy') {\n  selectedSource = 'open_meteo';\n  isFallback = true;\n}\n\nreturn [{\n  json: {\n    active_source: selectedSource,\n    is_fallback: isFallback,\n    triggered_at: new Date().toISOString()\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        448,
+        0
+      ],
+      "id": "c6974be7-752b-47db-8a44-41303722fcca",
+      "name": "Determine_Active_Source"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://including-ampland-involve-buy.trycloudflare.com/api/v1/ingestion/trigger\n",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Worker-Token",
+              "value": "jjD4i-sqIyYlEHbt6F6RbB79RIekw3DFRqWBoe41pxU"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"active_source\": \"open_meteo\",\n  \"is_fallback\": true,\n  \"triggered_at\": \"...\"\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        672,
+        0
+      ],
+      "id": "c3872046-5bbe-42b6-88ae-266e3979e99d",
+      "name": "Trigger_Python_Worker"
+    }
+  ],
+  "pinData": {
+    "Trigger_Python_Worker": [
+      {
+        "json": {
+          "status": "accepted",
+          "message": "Ingestion job queued successfully for source: open_meteo",
+          "execution_id": "job_baed0c3067e0450b8c666f041c351427"
+        }
+      }
+    ]
+  },
+  "connections": {
+    "Schedule_Ingestion": {
+      "main": [
+        [
+          {
+            "node": "Get_Source_Health",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get_Source_Health": {
+      "main": [
+        [
+          {
+            "node": "Determine_Active_Source",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Determine_Active_Source": {
+      "main": [
+        [
+          {
+            "node": "Trigger_Python_Worker",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "timeSavedMode": "fixed",
+    "errorWorkflow": "dzr3aUM5aPgacRzy",
+    "callerPolicy": "workflowsFromSameOwner",
+    "availableInMCP": false
+  },
+  "versionId": "3c319e35-f758-4c3a-a700-b71f3a1d1649",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "687815a9cbd88b02933c79cc904a49207e2dd586f7be01aa93a8b5d803291150"
+  },
+  "nodeGroups": [],
+  "id": "E1twfOifYzzX3YYA",
+  "tags": []
+}

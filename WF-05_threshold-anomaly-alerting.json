@@ -1,0 +1,154 @@
+{
+  "name": "WF-05_threshold-anomaly-alerting",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.4,
+      "position": [
+        0,
+        0
+      ],
+      "id": "17f117e5-15c1-4692-889c-a886c6ccc1ef",
+      "name": "Schedule Trigger"
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "tableId": "source_health"
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        224,
+        0
+      ],
+      "id": "8fb32e72-7295-4f2b-9cd9-6b46f387980b",
+      "name": "Get many rows",
+      "credentials": {
+        "supabaseApi": {
+          "id": "Qcjg53UWJedO8OUX",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "ab642491-f103-4ecb-9d36-5a9f568393a4",
+              "leftValue": "={{ $json.status }}",
+              "rightValue": "failed",
+              "operator": {
+                "type": "string",
+                "operation": "equals",
+                "name": "filter.operator.equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        448,
+        0
+      ],
+      "id": "0109a079-3256-49d8-bf23-59ebd50745b7",
+      "name": "If"
+    },
+    {
+      "parameters": {
+        "sendTo": "mansirathod671@gmail.com",
+        "subject": "[CRITICAL ANOMALY ALERT] Threshold Exceeded",
+        "message": "=Anomaly Detected in Water Monitoring Pipeline:\n- Source: {{ $json.source_name }}\n- Status/Value: {{ $json.status }}\n- Timestamp: {{ $json.updated_at }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        720,
+        -16
+      ],
+      "id": "e19e0b71-dfed-45f4-8e59-83990d5c336c",
+      "name": "Send a message",
+      "webhookId": "40de7db0-0a05-4d5c-abb0-f3eee26ea669",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "g8nl6jPOHQQdd6lR",
+          "name": "Gmail account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Get many rows",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get many rows": {
+      "main": [
+        [
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If": {
+      "main": [
+        [
+          {
+            "node": "Send a message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "timeSavedMode": "fixed",
+    "errorWorkflow": "dzr3aUM5aPgacRzy",
+    "callerPolicy": "workflowsFromSameOwner",
+    "availableInMCP": false
+  },
+  "versionId": "3a6ab20f-9911-49df-8767-bff1b08e6802",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "687815a9cbd88b02933c79cc904a49207e2dd586f7be01aa93a8b5d803291150"
+  },
+  "nodeGroups": [],
+  "id": "mbzMuh0K2QI3zjyG",
+  "tags": []
+}

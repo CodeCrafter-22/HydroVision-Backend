@@ -1,0 +1,134 @@
+{
+  "name": "WF-03_ingestion-status-alert",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "ingestion-callback",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.2,
+      "position": [
+        0,
+        0
+      ],
+      "id": "449b57b3-06e9-467b-a3f8-8915c9f980f9",
+      "name": "Webhook",
+      "webhookId": "feb47c61-d7d4-45f0-bf50-ff9d769250ab"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "2a8729eb-776e-4583-9d8e-d2fa2603bd48",
+              "leftValue": "={{ $json.body.is_fallback }}",
+              "rightValue": "true",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": "={{ true }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        224,
+        0
+      ],
+      "id": "d505c735-b5a8-4bcf-947c-186d064a4903",
+      "name": "If"
+    },
+    {
+      "parameters": {
+        "sendTo": "xyz@gmail.com",
+        "subject": "hah",
+        "emailType": "text",
+        "message": "ok",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        512,
+        -16
+      ],
+      "id": "b11792f9-f02a-45f0-861a-c181114b1cbf",
+      "name": "Send a message",
+      "webhookId": "654312b5-0e8a-4fa1-8853-a9cde6da8a0e",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "g8nl6jPOHQQdd6lR",
+          "name": "Gmail account"
+        }
+      }
+    }
+  ],
+  "pinData": {
+    "Webhook": [
+      {
+        "json": {
+          "body": {
+            "is_fallback": true,
+            "active_source": "open_meteo",
+            "message": "Primary gauge offline. Switched to fallback."
+          }
+        }
+      }
+    ]
+  },
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If": {
+      "main": [
+        [
+          {
+            "node": "Send a message",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "timeSavedMode": "fixed",
+    "errorWorkflow": "dzr3aUM5aPgacRzy",
+    "callerPolicy": "workflowsFromSameOwner",
+    "availableInMCP": false
+  },
+  "versionId": "1ddc4d30-d058-476a-9981-2a752e58fcae",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "687815a9cbd88b02933c79cc904a49207e2dd586f7be01aa93a8b5d803291150"
+  },
+  "nodeGroups": [],
+  "id": "h3KrBfC6cYaQGY1h",
+  "tags": []
+}

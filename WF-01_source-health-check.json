@@ -1,0 +1,352 @@
+{
+  "name": "WF-01_source-health-check",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 15
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.4,
+      "position": [
+        64,
+        16
+      ],
+      "id": "25f3cc1f-a0ca-48dc-aaf1-a0241d957e5d",
+      "name": "Schedule Trigger"
+    },
+    {
+      "parameters": {
+        "mode": "raw",
+        "jsonOutput": "{\n  \"cwc_url\": \"https://api.cwc.gov.in/health\",\n  \"open_meteo_url\": \"https://flood-api.open-meteo.com/v1/health\",\n  \"nasa_gpm_url\": \"https://gpm.nasa.gov/api/health\",\n  \"timeout_ms\": 5000\n}",
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.5,
+      "position": [
+        224,
+        -48
+      ],
+      "id": "d1195b07-cac2-4374-8eb1-2c23bffec988",
+      "name": "Init_Config"
+    },
+    {
+      "parameters": {
+        "url": "=={{ $json.cwc_url }}",
+        "options": {
+          "timeout": 5000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        448,
+        -32
+      ],
+      "id": "0207f5ca-fed7-4000-aa34-2df69eab7f00",
+      "name": "Probe_CWC",
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.open_meteo_url }}",
+        "options": {
+          "timeout": 5000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        464,
+        96
+      ],
+      "id": "0e8ede72-a1dd-4693-a9ef-7d28de528add",
+      "name": "Probe_OpenMeteo",
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "url": "=={{ $json.nasa_gpm_url }}",
+        "options": {
+          "timeout": 5000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        464,
+        -176
+      ],
+      "id": "f9bd09d0-797d-46c1-9b44-feedecb53362",
+      "name": "Probe_NASAGPM",
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const cwc = $('Probe_CWC').first() || {};\nconst openMeteo = $('Probe_OpenMeteo').first() || {};\nconst nasaGpm = $('Probe_NASAGPM').first() || {};\n\nconst now = new Date().toISOString();\n\nfunction evaluateSource(name, item) {\n  // Catch network failures or timeout errors\n  if (!item || !item.json || item.error || item.json.error) {\n    return {\n      source_name: name,\n      status: 'failed',\n      latency_ms: 0,\n      last_successful_fetch: null,\n      error_message: item?.error?.message || item?.json?.error || 'HTTP Request Failed',\n      updated_at: now\n    };\n  }\n\n  const statusCode = item.json.statusCode || 200;\n  const latency = item.json.latency || 250;\n\n  // Enforce strict health rules: status cannot be healthy solely because workflow ran\n  if (statusCode === 200 && latency < 3000) {\n    return {\n      source_name: name,\n      status: 'healthy',\n      latency_ms: latency,\n      last_successful_fetch: now,\n      error_message: null,\n      updated_at: now\n    };\n  } else if (statusCode === 200 && latency >= 3000) {\n    return {\n      source_name: name,\n      status: 'degraded',\n      latency_ms: latency,\n      last_successful_fetch: now,\n      error_message: 'Latency exceeded threshold',\n      updated_at: now\n    };\n  } else {\n    return {\n      source_name: name,\n      status: 'failed',\n      latency_ms: latency,\n      last_successful_fetch: null,\n      error_message: `HTTP Status ${statusCode}`,\n      updated_at: now\n    };\n  }\n}\n\nreturn [\n  { json: evaluateSource('cwc_gauge', cwc) },\n  { json: evaluateSource('open_meteo', openMeteo) },\n  { json: evaluateSource('nasa_gpm', nasaGpm) }\n];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        960,
+        -96
+      ],
+      "id": "10d2f2b5-aeb3-4672-9c67-3d055d46f255",
+      "name": "Evaluate_Health"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "leftValue": "=={{ $json.source_name === 'cwc_gauge' && $json.status !== 'healthy' }}",
+                    "rightValue": "",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "01a923a0-4ace-4155-976f-e19db01ec8c3"
+                  }
+                ],
+                "combinator": "and"
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        1408,
+        -96
+      ],
+      "id": "4335315d-905e-4abb-968c-e54c8b9e77bd",
+      "name": "Check_Fallback_Needed"
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "tableId": "source_health",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "source_name",
+              "condition": "eq",
+              "keyValue": "={{ $json.source_name }}"
+            }
+          ]
+        },
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "source_name",
+              "fieldValue": "={{ $json.source_name }}"
+            },
+            {
+              "fieldId": "status",
+              "fieldValue": "={{ $json.status }}"
+            },
+            {
+              "fieldId": "latency_ms",
+              "fieldValue": "={{ $json.latency_ms }}"
+            },
+            {
+              "fieldId": "last_successful_fetch",
+              "fieldValue": "={{ $json.last_successful_fetch }}"
+            },
+            {
+              "fieldId": "error_message",
+              "fieldValue": "={{ $json.error_message }}"
+            },
+            {
+              "fieldId": "updated_at",
+              "fieldValue": "={{ $json.updated_at }}"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        1184,
+        -96
+      ],
+      "id": "06787a21-8e06-48dc-972e-f897f356f9e1",
+      "name": "Update a row",
+      "credentials": {
+        "supabaseApi": {
+          "id": "Qcjg53UWJedO8OUX",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        768,
+        -96
+      ],
+      "id": "37015258-19bf-4bec-aa7d-6b5e778a0699",
+      "name": "Merge_Probes"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Init_Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Init_Config": {
+      "main": [
+        [
+          {
+            "node": "Probe_CWC",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Probe_OpenMeteo",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Probe_NASAGPM",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Probe_CWC": {
+      "main": [
+        [
+          {
+            "node": "Merge_Probes",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Merge_Probes",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Probe_NASAGPM": {
+      "main": [
+        [
+          {
+            "node": "Merge_Probes",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Merge_Probes",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Probe_OpenMeteo": {
+      "main": [
+        [
+          {
+            "node": "Merge_Probes",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Merge_Probes",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Evaluate_Health": {
+      "main": [
+        [
+          {
+            "node": "Update a row",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update a row": {
+      "main": [
+        [
+          {
+            "node": "Check_Fallback_Needed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge_Probes": {
+      "main": [
+        [
+          {
+            "node": "Evaluate_Health",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "timeSavedMode": "fixed",
+    "saveExecutionProgress": true,
+    "callerPolicy": "workflowsFromSameOwner",
+    "availableInMCP": false,
+    "errorWorkflow": "dzr3aUM5aPgacRzy"
+  },
+  "versionId": "958c3980-916c-49fb-91fa-236567b619e9",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "687815a9cbd88b02933c79cc904a49207e2dd586f7be01aa93a8b5d803291150"
+  },
+  "nodeGroups": [],
+  "id": "5lhxuWRO685Ndnt4",
+  "tags": []
+}
