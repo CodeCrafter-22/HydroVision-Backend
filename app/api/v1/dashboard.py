@@ -113,12 +113,13 @@ def get_dashboard_summary(request: Request):
 
             risk_counts[risk_level] += 1
 
-        # 4. Fetch alerts.
+        # 4. Fetch approved alerts only.
         alerts_result = (
             client.table("alerts")
             .select("*")
+            .eq("status", "approved")
             .order("created_at", desc=True)
-            .limit(1000)
+            .limit(100)
             .execute()
         )
         alerts = alerts_result.data or []
