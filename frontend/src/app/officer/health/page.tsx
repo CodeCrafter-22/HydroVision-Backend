@@ -292,8 +292,10 @@ export default function ModelHealthPage() {
   }, []);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     void loadData();
   }, [loadData]);
+
 
   const missing = {
     ...emptyMissingValues,

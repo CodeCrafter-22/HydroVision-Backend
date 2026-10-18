@@ -48,3 +48,51 @@ def test_request_id_header_propagation():
     assert response.headers.get("X-Request-ID") == custom_id
     payload = response.json()
     assert payload["meta"]["request_id"] == custom_id
+
+
+def test_cors_preflight_allowed_deployed_frontend_origin():
+    """Verify OPTIONS preflight succeeds with 200 and sets headers for the deployed Vercel frontend."""
+    vercel_origin = "https://hydrovision-frontend-l6qep861m-hydro-vision2.vercel.app"
+    response = client.options(
+        "/api/v1/health",
+        headers={
+            "Origin": vercel_origin,
+            "Access-Control-Request-Method": "GET",
+            "Access-Control-Request-Headers": "Content-Type,Authorization,X-Request-ID",
+        },
+    )
+    assert response.status_code == 200
+    assert response.headers.get("access-control-allow-origin") == vercel_origin
+    assert response.headers.get("access-control-allow-credentials") == "true"
+    assert "GET" in response.headers.get("access-control-allow-methods", "")
+
+
+def test_cors_preflight_allowed_localhost_origin():
+    """Verify OPTIONS preflight succeeds for local development origins."""
+    local_origin = "http://localhost:3000"
+    response = client.options(
+        "/api/v1/dashboard/summary",
+        headers={
+            "Origin": local_origin,
+            "Access-Control-Request-Method": "GET",
+            "Access-Control-Request-Headers": "Content-Type",
+        },
+    )
+    assert response.status_code == 200
+    assert response.headers.get("access-control-allow-origin") == local_origin
+    assert response.headers.get("access-control-allow-credentials") == "true"
+
+
+def test_cors_preflight_disallowed_origin():
+    """Verify OPTIONS preflight is rejected and does not return allow-origin header for untrusted origins."""
+    disallowed_origin = "https://untrusted-external-domain.com"
+    response = client.options(
+        "/api/v1/health",
+        headers={
+            "Origin": disallowed_origin,
+            "Access-Control-Request-Method": "GET",
+            "Access-Control-Request-Headers": "Content-Type",
+        },
+    )
+    assert response.status_code == 400
+    assert response.headers.get("access-control-allow-origin") is None

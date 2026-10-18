@@ -79,16 +79,27 @@ type DashboardApiResponse = {
   data: DashboardSummary;
 };
 
+type VillageRiskStatus = {
+  village_code?: string;
+
+  risk_level?: string;
+  assessment_status?: string;
+  safety_note?: string;
+  warnings?: string[];
+  [key: string]: unknown;
+};
+
 export default function OfficerCommandPage() {
   const [selectedVillage, setSelectedVillage] = useState<Village | null>(null);
 
   const [dashboard, setDashboard] = useState<DashboardSummary | null>(null);
-const [dashboardLoading, setDashboardLoading] = useState(true);
-const [dashboardError, setDashboardError] = useState<string | null>(null);
+  const [dashboardLoading, setDashboardLoading] = useState(true);
+  const [dashboardError, setDashboardError] = useState<string | null>(null);
 
-const [villageStatus, setVillageStatus] = useState<any>(null);
-const [villageStatusLoading, setVillageStatusLoading] = useState(true);
-const [villageStatusError, setVillageStatusError] = useState<string | null>(null);
+  const [villageStatus, setVillageStatus] = useState<VillageRiskStatus | null>(null);
+  const [villageStatusLoading, setVillageStatusLoading] = useState(true);
+  const [villageStatusError, setVillageStatusError] = useState<string | null>(null);
+
 
 useEffect(() => {
   let cancelled = false;

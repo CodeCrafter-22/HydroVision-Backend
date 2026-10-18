@@ -20,8 +20,18 @@ class Settings(BaseSettings):
     HOST: str = "0.0.0.0"
     API_V1_PREFIX: str = "/api/v1"
 
+    DEFAULT_ORIGINS: List[str] = [
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+        "https://hydrovision-frontend-l6qep861m-hydro-vision2.vercel.app",
+    ]
+
     # CORS settings (allowed origins for frontend access)
-    CORS_ORIGINS: Union[List[str], str] = ["http://localhost:3000", "http://127.0.0.1:3000"]
+    CORS_ORIGINS: Union[List[str], str] = [
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+        "https://hydrovision-frontend-l6qep861m-hydro-vision2.vercel.app",
+    ]
 
     # Supabase credentials (populated in local .env)
     SUPABASE_URL: str = ""
@@ -45,10 +55,29 @@ class Settings(BaseSettings):
     @field_validator("CORS_ORIGINS", mode="before")
     @classmethod
     def assemble_cors_origins(cls, v: Union[str, List[str]]) -> List[str]:
-        """Convert a comma-separated string into a list of origins if necessary."""
-        if isinstance(v, str) and not v.startswith("["):
-            return [origin.strip() for origin in v.split(",") if origin.strip()]
-        return v
+        """Convert a comma-separated string or list into a deduplicated list of origins."""
+        origins: List[str] = []
+        if isinstance(v, str):
+            if v.startswith("[") and v.endswith("]"):
+                import json
+                try:
+                    origins = json.loads(v)
+                except Exception:
+                    origins = [o.strip() for o in v.strip("[]").split(",") if o.strip()]
+            else:
+                origins = [origin.strip() for origin in v.split(",") if origin.strip()]
+        elif isinstance(v, (list, tuple, set)):
+            origins = [str(origin).strip() for origin in v if str(origin).strip()]
+
+        # Ensure base production frontend and localhost defaults are always retained
+        base_defaults = [
+            "http://localhost:3000",
+            "http://127.0.0.1:3000",
+            "https://hydrovision-frontend-l6qep861m-hydro-vision2.vercel.app",
+        ]
+        combined = list(dict.fromkeys(base_defaults + origins))
+        return combined
+
 
 
 # Global singleton instance
