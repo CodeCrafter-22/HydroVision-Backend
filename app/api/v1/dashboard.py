@@ -6,7 +6,10 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter, HTTPException, Request
 
-from app.core.supabase_client import get_supabase_client
+from app.core.supabase_client import (
+    execute_read_with_retry,
+    get_supabase_client,
+)
 
 
 router = APIRouter(prefix="/dashboard", tags=["Dashboard"])

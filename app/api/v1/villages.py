@@ -5,7 +5,10 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter, HTTPException, Request, status
 
-from app.core.supabase_client import get_supabase_client
+from app.core.supabase_client import (
+    execute_read_with_retry,
+    get_supabase_client,
+)
 
 router = APIRouter(prefix="/villages", tags=["Villages"])
 
@@ -45,12 +48,11 @@ def get_village_status(village_code: str, request: Request):
     client = get_supabase_client()
 
     # Find the village using its unique code, e.g. HV-TEST-001.
-    village_result = (
+    village_result = execute_read_with_retry(
         client.table("villages")
         .select("*")
         .eq("code", village_code)
         .limit(1)
-        .execute()
     )
 
     if not village_result.data:
