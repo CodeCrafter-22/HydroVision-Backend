@@ -27,6 +27,8 @@ This file defines the mandatory rules, boundaries, and invariants for all engine
    - Distinguish observation time (`observed_at`) from processing time (`ingested_at`).
 
 ## 3. Working Commands (Windows PowerShell)
-- **Activate Virtual Environment**: `.\.venv\Scripts\Activate.ps1`
-- **Run API Server**: `uvicorn app.main:app --reload --port 8000`
-- **Run Tests**: `pytest -v`
+- **Activate Virtual Environment**: `.\.venv\Scripts\Activate.ps1` (or `.\backend\.venv\Scripts\Activate.ps1`)
+- **Run API Server (from backend/)**: `cd backend; uvicorn app.main:app --reload --port 8000`
+- **Run Tests (from root)**: `pytest -v backend/tests`
+- **Run Tests (from backend/)**: `cd backend; pytest -v`
+
