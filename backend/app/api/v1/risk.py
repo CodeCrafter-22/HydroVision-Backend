@@ -1,10 +1,14 @@
 """Preliminary rule-based flood risk assessment for HydroVision."""
 
+import logging
+
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, HTTPException, Request
 
 from app.core.supabase_client import get_supabase_client
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/villages", tags=["Flood Risk"])
 
@@ -205,6 +209,61 @@ def assess_village_risk(village_code: str, request: Request):
 
     if warnings and assessment_status == "preliminary":
         assessment_status = "limited_data"
+
+
+
+    tier_mapping = {
+        "low": "Watch",
+        "moderate": "Warning",
+        "high": "Danger",
+    }
+
+    # Do not save "unknown" as a risk tier when data is insufficient.
+    tier = tier_mapping.get(risk_level)
+
+    if tier is not None:
+        snapshot = {
+            "village_id": village_id,
+            "created_at": now.isoformat(),
+            "tier": tier,
+            "probability": None,
+            "hours_to_impact": None,
+            "confidence": None,
+            "explanation": {
+                "assessment_status": assessment_status,
+                "warnings": warnings,
+                "observations": {
+                    "river_discharge_m3s": discharge,
+                    "river_level_m": river_level,
+                    "rainfall_mm": rainfall,
+                },
+                "method": "rule_based_demo",
+            },
+            "model_version": "rule_based_demo",
+            "source_freshness": {
+                "gauge_stale": gauge_stale,
+                "rain_stale": rain_stale,
+                "gauge_source": gauge_source,
+            },
+            "is_simulated": gauge_is_simulated,
+            "replay_run_id": None,
+        }
+
+        try:
+            client.table("risk_snapshots").insert(snapshot).execute()
+        except Exception:
+            logger.exception(
+                "Failed to save risk snapshot for village %s",
+                village_id,
+            )
+
+
+    try:
+        client.table("risk_snapshots").insert(snapshot).execute()
+    except Exception:
+        # Keep the assessment endpoint available if persistence fails.
+        pass
+
 
     return {
         "data": {
